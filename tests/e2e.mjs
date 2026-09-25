@@ -87,7 +87,7 @@ try {
   check("editing doesn't navigate links", !page.url().includes("#demo"));
 
   // Remove
-  await page.click(".hero-subtitle", { force: true });
+  await page.click(".hero-subtitle", { force: true, position: { x: 5, y: 5 } });
   await page.waitForTimeout(40);
   await root.locator(".bar button[title='Remove']").click();
   check("remove hides live but keeps element in DOM", (await page.locator(".hero-subtitle").count()) === 1 && !(await page.locator(".hero-subtitle").isVisible()));
@@ -143,7 +143,7 @@ try {
 
   list = (await cmd("list_changes")).data;
   check("6 changes recorded", list.length === 6, list.map((c) => c.type).join(","));
-  check("panel count", (await root.locator(".panel .copy").textContent()).includes("(6)"));
+  check("panel count", (await root.locator(".panel .copy-count").textContent()) === "6");
 
   // Undo everything with the keyboard, then redo
   await page.mouse.click(5, 5); // focus page
@@ -183,7 +183,7 @@ try {
   await page.reload();
   await page.waitForTimeout(800);
   check("changes survive reload (re-applied live)", (await snapshot()) === full.replace("", "") && (await plans()) === "Starter,Scale,Growth", await snapshot());
-  check("panel restored after reload", (await ui().locator(".panel .copy").textContent()).includes("(6)"));
+  check("panel restored after reload", (await ui().locator(".panel .copy-count").textContent()) === "6");
   const afterReload = (await cmd("get_prompt")).data.prompt;
   check("prompt identical after reload", afterReload.split("\n").slice(3).join("\n") === copied.split("\n").slice(3).join("\n"));
 
@@ -230,6 +230,44 @@ try {
   check("clear all reverts everything", (await cmd("list_changes")).data.length === 0 && (await plans()) === "Starter,Growth,Scale" && (await page.isVisible(".hero-subtitle")));
   await cmd("undo");
   check("clear all is undoable", (await cmd("list_changes")).data.length === 6);
+  await cmd("clear_all");
+
+  // Multi-page session: changes from every page of the site go into one prompt.
+  await page.goto(url);
+  await page.waitForTimeout(800);
+  const h1Id = (await cmd("find_elements", { selector: "h1" })).data[0].elementId;
+  await cmd("edit_text", { elementId: h1Id, newText: "Landing headline" });
+  await page.goto(url.replace("/landing", "/second"));
+  await page.waitForTimeout(900);
+  list = (await cmd("list_changes")).data;
+  check("full navigation keeps earlier pages' changes", list.length === 1 && list[0].onThisPage === false && list[0].page.url.endsWith("/landing"), JSON.stringify(list.map((c) => c.page?.url)));
+  check("other-page change isn't applied here", (await page.textContent("h1")) === "Email marketing platform for startups");
+  const pricingH2 = (await cmd("find_elements", { text: "Pricing", selector: "h2" })).data[0];
+  await cmd("edit_text", { elementId: pricingH2.elementId, newText: "Plans" });
+  // Client-side navigation (SPA)
+  await page.evaluate(() => history.pushState({}, "", "/third"));
+  await page.waitForTimeout(700);
+  const fastId = (await cmd("find_elements", { text: "Fast" })).data[0].elementId;
+  await cmd("add_note", { elementId: fastId, note: "Say how fast" });
+  list = (await cmd("list_changes")).data;
+  check("client-side navigation records the new page", list.length === 3 && list[2].page.url.endsWith("/third") && list[1].page.url.endsWith("/second"), JSON.stringify(list.map((c) => c.page.url)));
+  const multi = (await cmd("get_prompt")).data.prompt;
+  const secs = multi.split("\n").filter((l) => l.startsWith("## Page:"));
+  check("prompt groups changes by page", /^I reviewed 3 pages/.test(multi) && secs.length === 3 && secs[0].includes("/landing") && secs[1].includes("/second") && secs[2].includes("/third"), secs.join(" / "));
+  check("prompt numbering continues across pages", /\n1\. EDIT TEXT[\s\S]*\n2\. EDIT TEXT[\s\S]*\n3\. NOTE/.test(multi));
+  console.log("\n----- multi-page prompt -----\n" + multi + "\n-----------------------------\n");
+  // A new change on an earlier page slots into that page's group.
+  await page.evaluate(() => history.pushState({}, "", "/second"));
+  await page.waitForTimeout(700);
+  const starterId = (await cmd("find_elements", { text: "Starter" })).data[0].elementId;
+  await cmd("remove_element", { elementId: starterId });
+  list = (await cmd("list_changes")).data;
+  check("changes stay grouped by page", list.map((c) => new URL(c.page.url).pathname).join() === "/landing,/second,/second,/third", list.map((c) => new URL(c.page.url).pathname).join());
+  check("panel shows page headers", (await ui().locator(".panel .page-head").count()) === 3);
+  await ui().locator(".panel .item.elsewhere").first().click();
+  await page.waitForURL(/\/landing$/);
+  await page.waitForTimeout(900);
+  check("clicking another page's change goes there and re-applies it", (await page.textContent("h1")) === "Landing headline");
   await cmd("clear_all");
 
   // Toggle off

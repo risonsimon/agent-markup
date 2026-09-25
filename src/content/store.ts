@@ -5,6 +5,8 @@ import type { Change } from "./changes";
 export interface State {
   enabled: boolean;
   changes: Change[];
+  /** The page currently shown (origin + path + search); follows client-side navigation. */
+  pageKey: string;
   canUndo: boolean;
   canRedo: boolean;
   selectedId: string | null;
@@ -24,6 +26,7 @@ class Store {
   private state: State = {
     enabled: false,
     changes: [],
+    pageKey: "",
     canUndo: false,
     canRedo: false,
     selectedId: null,

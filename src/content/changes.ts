@@ -1,8 +1,17 @@
 // The change model. Changes are plain data (serializable to storage) plus a
 // runtime elementId that is re-resolved from `selector` after a reload.
 
+/** The page a change was made on. Changes from every page of a site share one session. */
+export interface PageRef {
+  /** origin + pathname + search: the identity used for grouping. */
+  key: string;
+  url: string;
+  title: string;
+}
+
 interface BaseChange {
   id: string;
+  page: PageRef;
   /** Runtime element ID, or null when the element can't be found on the page. */
   elementId: string | null;
   /** Stable selector recorded when the change was first made (pre-change DOM). */

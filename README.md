@@ -42,7 +42,9 @@ The panel sits at the bottom right. You can drag it by its header and collapse i
 - **Clear all**. Click it twice to confirm. Clearing can be undone.
 - **Copy prompt (N)** copies the prompt to your clipboard.
 
-Changes are saved per page URL in `chrome.storage.local`. When you reload, they are re-applied wherever the elements can still be found. If Chrome still lets the extension access the tab after the reload, Agent Markup turns itself back on. If not, click the icon again and your saved changes come back.
+**Multiple pages.** Browse to other pages on the same site (hold Alt and click a link) and keep marking up. Changes from every page go into one session, grouped under a header for each page. That works for normal page loads and for client-side route changes in single-page apps. Only the current page's changes are applied live. Click a change from another page to go to that page.
+
+The session is saved per site (origin) in `chrome.storage.local`. When you reload or come back to a page, its changes are re-applied wherever the elements can still be found. If Chrome still lets the extension access the tab after a reload or navigation, Agent Markup turns itself back on. If not, click the icon again and your saved changes come back.
 
 ### The prompt
 
@@ -68,6 +70,7 @@ Tip: search the codebase for the old text or the class names above to locate eac
 - **Selectors** are chosen to be stable and short. They prefer `id`, `data-testid` and other `data-*` attributes, `aria-label`, `href`/`alt`/`name`, and meaningful class names (BEM names are kept). Generated names are skipped: `css-1x2y3z`, `sc-abc123`, CSS Modules hashes and Tailwind utility classes. When nothing better exists, the selector falls back to a short `:nth-of-type` path.
 - **Section** is the nearest landmark (header, nav, footer, aside, a named `<section>`) and/or the heading that comes before the element. Heading text is the original text, before any edit.
 - **Context HTML** is the element's original `outerHTML`, trimmed to about 300 characters. Event handlers, inline styles and long attribute values are removed first.
+- When changes span several pages, the prompt starts with `I reviewed N pages of the live site…` and puts each page's changes under its own `## Page: <URL>  |  Title: <title>` heading. Numbering continues across pages.
 - Several edits to the same element become one entry (original → latest). Editing text back to its original removes the entry.
 
 ## Architecture (built so an AI can drive it)
@@ -103,7 +106,7 @@ Everything goes through `executeCommand`: the UI, keyboard shortcuts and outside
 | `move_element` | `{ elementId, targetId, position: "before" \| "after" }` (siblings only) | `{ changed, changeId }` |
 | `revert_change` | `{ changeId }` | `{ reverted }` |
 | `undo` / `redo` / `clear_all` | `{}` | status |
-| `list_changes` | `{}` | changes in prompt order |
+| `list_changes` | `{}` | changes in prompt order, each with its `page` and `onThisPage` |
 | `get_prompt` / `copy_prompt` | `{}` | `{ prompt, count }` |
 | `find_elements` | `{ query?, text?, selector?, limit? }` | `[{ elementId, tag, role, text, selector, section }]` |
 | `get_page_outline` | `{ limit?, includeSelectors? }` | headings, buttons, links, paragraphs, images with alt, fields |
@@ -162,4 +165,5 @@ Both use Playwright with a test build (`dist-test/`). The test build adds `<all_
 
 - Editing replaces the element's text with plain text. If the text is a single run next to icons (`<button><svg/>Label</button>`), only that run changes and the icons stay.
 - After a reload, changes are matched to elements by selector. Pages that render very differently each load, or sites that change their markup, may leave some changes marked as not found. They still appear in the prompt.
-- The storage key is the URL when the change is saved. Client-side route changes within a single-page app aren't tracked as separate pages.
+- A session covers one site (origin). Changes on a different domain start their own session.
+- Undo and redo history covers what you did since the page last loaded. After a full navigation, earlier changes stay in the list and can still be reverted with ×.

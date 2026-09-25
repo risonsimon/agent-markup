@@ -6,6 +6,7 @@
   "type": "module",
   "scripts": {
     "build": "bun build.mjs",
+    "build:test": "bun build.mjs --test",
     "watch": "bun build.mjs --watch",
     "typecheck": "tsc --noEmit",
     "test:e2e": "bun build.mjs --test && bun tests/e2e.mjs",

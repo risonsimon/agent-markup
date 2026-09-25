@@ -28,6 +28,7 @@ function requireElement(elementId: string): Element {
 function base(el: Element, elementId: string) {
   return {
     id: session.newChangeId(),
+    page: session.currentPage(),
     elementId,
     selector: stableSelector(el),
     tag: el.localName,
@@ -39,7 +40,8 @@ function base(el: Element, elementId: string) {
 
 /** The public shape of a change for callers (list_changes). */
 function view(c: Change, i: number) {
-  return { number: i + 1, ...c, found: !!c.elementId };
+  const onThisPage = session.isOnCurrentPage(c);
+  return { number: i + 1, ...c, onThisPage, found: onThisPage && !!elementOf(c.elementId) };
 }
 
 const handlers: Record<CommandName, Handler> = {

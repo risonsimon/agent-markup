@@ -2,6 +2,7 @@
 import type { Change } from "../changes";
 import { executeCommand } from "../commands";
 import { truncate } from "../describe";
+import { elementOf } from "../registry";
 import { store, type State } from "../store";
 import { h, ICONS } from "./root";
 
@@ -20,7 +21,17 @@ function detail(c: Change): (Node | string)[] {
   }
 }
 
+function pagePath(url: string): string {
+  try {
+    const u = new URL(url);
+    return truncate(u.pathname + u.search, 44) || "/";
+  } catch {
+    return url;
+  }
+}
+
 const KIND_LABEL: Record<Change["type"], string> = { edit: "Edit text", remove: "Remove", note: "Note", move: "Move" };
+const KIND_ICON: Record<Change["type"], string> = { edit: ICONS.edit, remove: ICONS.remove, note: ICONS.note, move: ICONS.move };
 
 export function createPanel() {
   const count = h("span", { class: "count" }, "0");
@@ -29,7 +40,7 @@ export function createPanel() {
   const head = h(
     "div",
     { class: "head" },
-    h("span", { class: "logo" }),
+    h("span", { class: "logo", html: ICONS.mark }),
     h("span", { class: "name" }, "Agent Markup"),
     count,
     h("span", { class: "browse" }, "Browsing"),
@@ -38,8 +49,8 @@ export function createPanel() {
     closeBtn,
   );
   const list = h("ol", { class: "list" });
-  const undoBtn = h("button", { class: "btn", title: "Undo (⌘/Ctrl+Z)", html: ICONS.undo + "<span>Undo</span>" });
-  const redoBtn = h("button", { class: "btn", title: "Redo (⌘/Ctrl+Shift+Z)", html: ICONS.redo + "<span>Redo</span>" });
+  const undoBtn = h("button", { class: "btn quiet", title: "Undo (⌘/Ctrl+Z)", html: ICONS.undo + "<span>Undo</span>" });
+  const redoBtn = h("button", { class: "btn quiet", title: "Redo (⌘/Ctrl+Shift+Z)", html: ICONS.redo + "<span>Redo</span>" });
   const clearBtn = h("button", { class: "btn danger" }, "Clear all");
   const copyBtn = h("button", { class: "btn primary copy" });
   const body = h(
@@ -48,7 +59,7 @@ export function createPanel() {
     list,
     h("div", { class: "tools" }, undoBtn, redoBtn, h("span", { class: "grow" }), clearBtn),
     copyBtn,
-    h("div", { class: "foot", html: "Hold <kbd>Alt</kbd> to click and scroll the page normally." }),
+    h("div", { class: "foot", html: "Hold <kbd>Alt</kbd> to use the page normally" }),
   );
   const panel = h("div", { class: "panel", role: "region", "aria-label": "Agent Markup changes" }, head, body);
 
@@ -135,6 +146,7 @@ export function createPanel() {
 
   let lastToast = 0;
   let lastChanges: Change[] | null = null;
+  let lastPageKey = "";
   function render(s: State) {
     if (s.toast && s.toast.at !== lastToast) {
       lastToast = s.toast.at;
@@ -149,10 +161,15 @@ export function createPanel() {
     undoBtn.disabled = !s.canUndo;
     redoBtn.disabled = !s.canRedo;
     clearBtn.disabled = n === 0;
-    copyBtn.replaceChildren(h("span", { html: ICONS.copy }), copyLabel ?? `Copy prompt (${n})`);
+    copyBtn.replaceChildren(
+      h("span", { class: "copy-icon", html: copyLabel && copyBtn.classList.contains("done") ? ICONS.check : ICONS.copy }),
+      h("span", {}, copyLabel ?? "Copy prompt"),
+      copyLabel ? "" : h("span", { class: "copy-count" }, String(n)),
+    );
 
-    if (s.changes === lastChanges) return;
+    if (s.changes === lastChanges && s.pageKey === lastPageKey) return;
     lastChanges = s.changes;
+    lastPageKey = s.pageKey;
     if (!n) {
       list.replaceChildren(
         h(
@@ -162,31 +179,54 @@ export function createPanel() {
       );
       return;
     }
-    list.replaceChildren(
-      ...s.changes.map((c, i) => {
-        const x = h("button", { class: "x", title: "Revert this change", "aria-label": `Revert change ${i + 1}`, html: ICONS.close });
-        x.addEventListener("click", (e) => {
-          e.stopPropagation();
-          void executeCommand("revert_change", { changeId: c.id });
-        });
-        const item = h(
-          "li",
-          { class: `item${c.elementId ? "" : " missing"}`, title: c.elementId ? c.selector : "Element not found on the page" },
-          h("span", { class: "num" }, String(i + 1)),
+    const multiPage = new Set(s.changes.map((c) => c.page.key)).size > 1;
+    const rows: HTMLElement[] = [];
+    s.changes.forEach((c, i) => {
+      const here = c.page.key === s.pageKey;
+      if (multiPage && c.page.key !== s.changes[i - 1]?.page.key) {
+        rows.push(
+          h(
+            "li",
+            { class: `page-head${here ? " here" : ""}`, title: c.page.url },
+            h("span", { class: "page-path" }, pagePath(c.page.url)),
+            here ? h("span", { class: "page-here" }, "This page") : "",
+          ),
+        );
+      }
+      const found = here && !!elementOf(c.elementId);
+      const x = h("button", { class: "x", title: "Revert this change", "aria-label": `Revert change ${i + 1}`, html: ICONS.close });
+      x.addEventListener("click", (e) => {
+        e.stopPropagation();
+        void executeCommand("revert_change", { changeId: c.id });
+      });
+      const item = h(
+        "li",
+        {
+          class: `item${found ? "" : here ? " missing" : " elsewhere"}`,
+          title: found ? c.selector : here ? "Element not found on the page" : `Go to ${pagePath(c.page.url)}`,
+        },
+        h("span", { class: "num" }, String(i + 1)),
+        h(
+          "div",
+          { class: "main" },
           h(
             "div",
-            { class: "main" },
-            h("div", { class: `kind k-${c.type}` }, KIND_LABEL[c.type], h("span", { class: "where" }, `<${c.tag}>`)),
-            h("div", { class: "detail" }, ...detail(c)),
+            { class: `kind k-${c.type}` },
+            h("span", { class: "k-icon", html: KIND_ICON[c.type] }),
+            KIND_LABEL[c.type],
+            h("span", { class: "where" }, `<${c.tag}>`),
           ),
-          x,
-        );
-        item.addEventListener("click", () => {
-          if (c.elementId) void executeCommand("select_element", { elementId: c.elementId, scrollIntoView: true, flash: true });
-        });
-        return item;
-      }),
-    );
+          h("div", { class: "detail" }, ...detail(c)),
+        ),
+        x,
+      );
+      item.addEventListener("click", () => {
+        if (found) void executeCommand("select_element", { elementId: c.elementId, scrollIntoView: true, flash: true });
+        else if (!here) location.assign(c.page.url);
+      });
+      rows.push(item);
+    });
+    list.replaceChildren(...rows);
   }
 
   async function loadPosition() {

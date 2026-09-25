@@ -1,5 +1,5 @@
 // Generates the toolbar icon as a PNG without any image dependencies:
-// a violet rounded square with a white cursor arrow and a small pen dot.
+// a graphite rounded square with a white cursor arrow and an orange marker dot.
 import { deflateSync } from "node:zlib";
 
 const crcTable = Array.from({ length: 256 }, (_, n) => {
@@ -39,21 +39,23 @@ export function makeIcon(size) {
   for (let y = 0; y < size; y++) {
     raw[y * (size * 4 + 1)] = 0;
     for (let x = 0; x < size; x++) {
-      let bg = 0, fg = 0;
+      let bg = 0, fg = 0, dotc = 0;
       for (let sy = 0; sy < ss; sy++) for (let sx = 0; sx < ss; sx++) {
         const u = (x + (sx + 0.5) / ss) / size, v = (y + (sy + 0.5) / ss) / size;
         const dx = Math.max(r - u, 0, u - (1 - r)), dy = Math.max(r - v, 0, v - (1 - r));
         if (dx * dx + dy * dy <= r * r) {
           bg++;
           const dot = (u - 0.74) ** 2 + (v - 0.3) ** 2 <= 0.075 ** 2;
-          if (inPoly(u, v, arrow) || dot) fg++;
+          if (dot) dotc++;
+          else if (inPoly(u, v, arrow)) fg++;
         }
       }
-      const n = ss * ss, a = bg / n, f = bg ? fg / bg : 0;
+      const n = ss * ss, a = bg / n, f = bg ? fg / bg : 0, d = bg ? dotc / bg : 0, b = 1 - f - d;
       const o = y * (size * 4 + 1) + 1 + x * 4;
-      raw[o] = Math.round(124 + (255 - 124) * f);
-      raw[o + 1] = Math.round(58 + (255 - 58) * f);
-      raw[o + 2] = Math.round(237 + (255 - 237) * f);
+      // graphite #1d1d20, cursor #f2f2f2, dot #ff6a1f
+      raw[o] = Math.round(29 * b + 242 * f + 255 * d);
+      raw[o + 1] = Math.round(29 * b + 242 * f + 106 * d);
+      raw[o + 2] = Math.round(32 * b + 242 * f + 31 * d);
       raw[o + 3] = Math.round(a * 255);
     }
   }

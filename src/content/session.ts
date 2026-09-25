@@ -1,7 +1,7 @@
 // Change list, undo/redo history and persistence. commit() is the single path
 // by which the change list and the page DOM are modified.
 import { setOriginalTextLookup } from "./describe";
-import { serialize, type Change, type HistoryEntry, type Patch } from "./changes";
+import { serialize, type Change, type HistoryEntry, type PageRef, type Patch } from "./changes";
 import * as engine from "./engine";
 import { elementOf, idOf } from "./registry";
 import { store } from "./store";
@@ -10,7 +10,18 @@ const undoStack: HistoryEntry[] = [];
 const redoStack: HistoryEntry[] = [];
 let nextChangeId = 1;
 
-export const pageKey = () => `page:${location.origin}${location.pathname}${location.search}`;
+/** All pages of a site share one session, so the prompt can cover a whole browsing session. */
+const siteKey = () => `site:${location.origin}`;
+/** Pre-session storage format: one list per page. */
+const legacyPageKey = () => `page:${location.origin}${location.pathname}${location.search}`;
+
+export const currentPageKey = () => `${location.origin}${location.pathname}${location.search}`;
+
+export function currentPage(): PageRef {
+  return { key: currentPageKey(), url: location.href, title: document.title };
+}
+
+export const isOnCurrentPage = (c: Change) => c.page.key === currentPageKey();
 
 export function newChangeId(): string {
   return `ch_${nextChangeId++}`;
@@ -83,11 +94,20 @@ export function redo(): string | null {
   return entry.label;
 }
 
-/** Patch that inserts a new change or replaces the existing one with the same id. */
+/**
+ * Patch that inserts a new change or replaces the existing one with the same id.
+ * New changes go after the last change from the same page, so the list stays
+ * grouped by page and numbers match the prompt.
+ */
 export function patchFor(before: Change | undefined, after: Change | null): Patch {
   const list = changes();
   const id = before?.id ?? after?.id ?? newChangeId();
-  const index = before ? list.findIndex((c) => c.id === before.id) : list.length;
+  let index = list.length;
+  if (before) index = list.findIndex((c) => c.id === before.id);
+  else if (after) {
+    const last = list.map((c) => c.page.key).lastIndexOf(after.page.key);
+    if (last !== -1) index = last + 1;
+  }
   return { id, before: before ?? null, after, index };
 }
 
@@ -95,8 +115,8 @@ export function patchFor(before: Change | undefined, after: Change | null): Patc
 
 async function persist(list: Change[]) {
   try {
-    const key = pageKey();
-    if (list.length) await chrome.storage.local.set({ [key]: { url: location.href, savedAt: Date.now(), changes: list.map(serialize) } });
+    const key = siteKey();
+    if (list.length) await chrome.storage.local.set({ [key]: { savedAt: Date.now(), changes: list.map(serialize) } });
     else await chrome.storage.local.remove(key);
   } catch (err) {
     console.warn("Agent Markup: could not save changes", err);
@@ -113,12 +133,17 @@ function resolve(selector: string): string | null {
   }
 }
 
-/** Resolves element IDs for changes whose elements weren't found yet and applies them. Returns how many are still missing. */
+/**
+ * Resolves elements for this page's changes that aren't on the page (not found
+ * yet, or replaced by a client-side re-render) and applies them. Changes from
+ * other pages are left alone. Returns how many are still missing.
+ */
 function applyMissing(): number {
   let missing = 0;
   let touched = false;
   const list = changes().map((c) => {
-    if (c.elementId && (c.type !== "move" || c.targetId)) return c;
+    if (!isOnCurrentPage(c)) return c;
+    if (elementOf(c.elementId) && (c.type !== "move" || elementOf(c.targetId))) return c;
     const elementId = resolve(c.selector);
     const resolved = c.type === "move" ? { ...c, elementId, targetId: resolve(c.targetSelector) } : { ...c, elementId };
     if (!resolved.elementId || (resolved.type === "move" && !resolved.targetId)) {
@@ -133,20 +158,51 @@ function applyMissing(): number {
   return missing;
 }
 
-/** Loads saved changes for this URL and re-applies them where elements can still be found. */
-export async function restore() {
-  const saved = (await chrome.storage.local.get(pageKey()))[pageKey()] as { changes?: Change[] } | undefined;
-  const list = (saved?.changes ?? []).map((c) => ({ ...c, elementId: null, ...(c.type === "move" ? { targetId: null } : {}) })) as Change[];
-  for (const c of list) {
-    const n = Number(c.id.replace(/^ch_/, ""));
-    if (n >= nextChangeId) nextChangeId = n + 1;
-  }
-  store.set({ changes: list });
-  // Pages that render late (SPAs) get a few more chances.
+/** Re-applies this page's changes, giving late-rendering pages (SPAs) a few more chances. */
+async function applyWithRetries() {
   let missing = applyMissing();
-  for (const delay of [500, 1500, 3500]) {
+  for (const delay of [300, 1000, 2500]) {
     if (!missing) break;
     await new Promise((r) => setTimeout(r, delay));
     missing = applyMissing();
   }
+}
+
+/** Loads this site's session and re-applies the current page's changes where elements can still be found. */
+export async function restore() {
+  const data = await chrome.storage.local.get([siteKey(), legacyPageKey()]);
+  const site = (data[siteKey()] as { changes?: Change[] } | undefined)?.changes ?? [];
+  const legacy = ((data[legacyPageKey()] as { changes?: Change[] } | undefined)?.changes ?? []).filter(
+    (l) => !site.some((c) => c.id === l.id),
+  );
+  const list = [...site, ...legacy].map((c) => ({
+    ...c,
+    page: c.page ?? currentPage(),
+    elementId: null,
+    ...(c.type === "move" ? { targetId: null } : {}),
+  })) as Change[];
+  for (const c of list) {
+    const n = Number(c.id.replace(/^ch_/, ""));
+    if (n >= nextChangeId) nextChangeId = n + 1;
+  }
+  store.set({ changes: list, pageKey: currentPageKey() });
+  if (legacy.length) {
+    await persist(list);
+    await chrome.storage.local.remove(legacyPageKey());
+  }
+  await applyWithRetries();
+  watchUrl();
+}
+
+/** Client-side navigation (pushState, popstate) keeps this script alive, so follow URL changes. */
+function watchUrl() {
+  const check = () => {
+    const key = currentPageKey();
+    if (key === store.get().pageKey) return;
+    store.set({ pageKey: key, selectedId: null, noteEditingId: null });
+    void applyWithRetries();
+  };
+  addEventListener("popstate", check);
+  (window as unknown as { navigation?: EventTarget }).navigation?.addEventListener("navigatesuccess", () => setTimeout(check, 0));
+  setInterval(check, 500);
 }

@@ -30,7 +30,7 @@ for (const url of urls) {
     await toggle();
     check("panel visible", await ui().locator(".panel").isVisible());
     const font = await ui().locator(".panel .name").evaluate((n) => getComputedStyle(n).fontFamily + " " + getComputedStyle(n).fontSize);
-    check("panel styles isolated", /ui-sans-serif/.test(font) && font.endsWith("12.5px"), font);
+    check("panel styles isolated", /ui-sans-serif/.test(font) && font.endsWith(" 13px"), font);
 
     const outline = (await cmd("get_page_outline", { limit: 60 })).data;
     check("outline", outline.length > 5, `${outline.length} items, e.g. ${JSON.stringify(outline.slice(0, 3).map((o) => `${o.role}: ${o.text}`))}`);

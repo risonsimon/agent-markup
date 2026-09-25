@@ -19,13 +19,13 @@ export interface Overlay {
 type Rect = { top: number; left: number; width: number; height: number };
 
 function place(node: HTMLElement, r: Rect) {
-  node.style.transform = `translate(${Math.round(r.left)}px, ${Math.round(r.top)}px)`;
+  node.style.translate = `${Math.round(r.left)}px ${Math.round(r.top)}px`;
   node.style.width = `${Math.round(r.width)}px`;
   node.style.height = `${Math.round(r.height)}px`;
 }
 
 function moveTo(node: HTMLElement, x: number, y: number) {
-  node.style.transform = `translate(${Math.round(x)}px, ${Math.round(y)}px)`;
+  node.style.translate = `${Math.round(x)}px ${Math.round(y)}px`;
 }
 
 const visibleRect = (el: Element | null) => {
@@ -37,7 +37,11 @@ const visibleRect = (el: Element | null) => {
 export function createOverlay(): Overlay {
   const hoverBox = h("div", { class: "box hover" });
   const tag = h("div", { class: "tag" });
-  const selectedBox = h("div", { class: "box selected" });
+  const selectedBox = h(
+    "div",
+    { class: "box selected" },
+    ...["tl", "tr", "bl", "br"].map((c) => h("span", { class: `corner ${c}` })),
+  );
   const dragSrcBox = h("div", { class: "box dragging-src" });
   const flashBox = h("div", { class: "box flash" });
   const dropLine = h("div", { class: "drop-line" });
@@ -55,7 +59,7 @@ export function createOverlay(): Overlay {
     h("button", { class: "danger", title: "Remove", onclick: () => onRemove(), html: ICONS.remove + "<span>Remove</span>" }),
     h("button", { title: "Note", onclick: () => onNote(), html: ICONS.note }, noteLabel),
   );
-  const editHint = h("span", { class: "hint", html: "<kbd>Enter</kbd> save · <kbd>Esc</kbd> cancel · <kbd>⇧ Enter</kbd> newline" });
+  const editHint = h("span", { class: "hint", html: "<kbd>↵</kbd> Save<span class='dot'></span><kbd>Esc</kbd> Cancel<span class='dot'></span><kbd>⇧↵</kbd> New line" });
   const bar = h("div", { class: "bar", role: "toolbar", "aria-label": "Agent Markup actions" }, actions, editHint);
 
   const selected = () => elementOf(store.get().selectedId);
@@ -84,7 +88,7 @@ export function createOverlay(): Overlay {
     h(
       "div",
       { class: "row" },
-      h("span", { class: "spacer" }, "⌘/Ctrl + Enter to save"),
+      h("span", { class: "spacer", html: `<kbd>${/Mac|iPhone|iPad/.test(navigator.platform) ? "⌘" : "Ctrl"}</kbd><kbd>↵</kbd>` }),
       noteDelete,
       h("button", { class: "btn", onclick: () => store.set({ noteEditingId: null }) }, "Cancel"),
       h("button", { class: "btn primary", onclick: () => saveNote(noteText.value) }, "Save"),
@@ -117,9 +121,9 @@ export function createOverlay(): Overlay {
       const sel = stableSelector(el);
       const r = el.getBoundingClientRect();
       tag.replaceChildren(
-        h("b", {}, el.localName),
-        sel !== el.localName ? h("span", {}, " " + truncate(sel, 60)) : "",
-        h("span", { class: "dim" }, `  ${Math.round(r.width)}×${Math.round(r.height)}`),
+        h("span", { class: "t-tag" }, el.localName),
+        sel !== el.localName ? h("span", { class: "t-sel" }, truncate(sel, 56)) : "",
+        h("span", { class: "t-dim" }, `${Math.round(r.width)} × ${Math.round(r.height)}`),
       );
     }
   }
