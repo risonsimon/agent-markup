@@ -1,0 +1,57 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Acme Mail — Email marketing for startups</title>
+<style>
+  /* Hostile global styles: none of this may leak into Agent Markup's UI. */
+  * { box-sizing: content-box !important; font-family: "Comic Sans MS", cursive !important; letter-spacing: 3px !important; }
+  button { background: hotpink !important; padding: 30px !important; font-size: 28px !important; border: 5px solid lime !important; border-radius: 0 !important; }
+  ol, ul, li { list-style: square !important; }
+  textarea { display: none !important; }
+  svg { width: 60px !important; height: 60px !important; }
+  span, b, s, kbd { color: red !important; font-size: 22px !important; }
+  div { outline: 1px dashed orange; }
+  agent-markup-root { display: none !important; opacity: 0 !important; }
+  body { margin: 0; padding: 0 24px 400px; }
+  .nav-links { display: flex; gap: 24px; padding: 0; }
+  .nav-links li { list-style: none !important; }
+  .feature-list { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; padding: 0; }
+  .feature-card { list-style: none !important; border: 1px solid #ccc; padding: 24px; }
+  #pricing .plan { padding: 12px; border-bottom: 1px solid #eee; }
+</style>
+</head>
+<body>
+  <header class="site-header">
+    <nav aria-label="Main">
+      <ul class="nav-links">
+        <li><a href="/features">Features</a></li>
+        <li><a href="/pricing">Pricing</a></li>
+        <li><a href="/docs">Docs</a></li>
+      </ul>
+    </nav>
+  </header>
+  <section class="css-1x2y3z flex items-center justify-between px-8 py-12 md:py-24">
+    <h1 class="sc-abc123 text-5xl font-bold tracking-tight">Email marketing platform for startups</h1>
+    <p class="hero-subtitle">Send beautiful emails <strong>without writing code</strong>.</p>
+    <a class="btn btn-primary" href="#demo" data-testid="cta-demo"><svg viewBox="0 0 10 10"><circle cx="5" cy="5" r="4"/></svg>Book a demo</a>
+    <button id="trial" onclick="window.__clicked=(window.__clicked||0)+1">Start free trial</button>
+  </section>
+  <section class="features">
+    <h2>Features</h2>
+    <ul class="feature-list">
+      <li class="feature-card">Fast</li>
+      <li class="feature-card">Reliable</li>
+      <li class="feature-card">Cheap</li>
+    </ul>
+  </section>
+  <section id="pricing">
+    <h2>Pricing</h2>
+    <div class="plan">Starter — $9</div>
+    <div class="plan">Growth — $49</div>
+    <div class="plan">Scale — $199</div>
+  </section>
+  <footer><p>© 2026 Acme Mail</p><a href="/privacy">Privacy</a></footer>
+  <script>document.addEventListener("click", () => (window.__docClicks = (window.__docClicks || 0) + 1));</script>
+</body>
+</html>
