@@ -126,17 +126,26 @@ try {
   const order = () => page.$$eval(".feature-card", (els) => els.map((e) => e.textContent).join(","));
   check("drag reorders among siblings", (await order()) === "Cheap,Fast,Reliable", await order());
 
-  // Drag outside the parent does nothing
+  // Drag anywhere: a feature card dropped above the Pricing heading moves into #pricing
   await page.click(".feature-card:nth-child(1)", { force: true });
   await page.waitForTimeout(40);
   const hb2 = await root.locator(".bar .handle").boundingBox();
   const h2 = await page.locator("#pricing h2").boundingBox();
   await page.mouse.move(hb2.x + 5, hb2.y + 5);
   await page.mouse.down();
-  await page.mouse.move(h2.x + 10, h2.y + 5, { steps: 6 });
+  await page.mouse.move(h2.x + 10, h2.y + 3, { steps: 6 });
   const shown = await root.locator(".drop-line.show").count();
+  const parentShown = await root.locator(".drop-parent.show").count();
   await page.mouse.up();
-  check("drag can't leave the parent", shown === 0 && (await order()) === "Cheap,Fast,Reliable");
+  await page.waitForTimeout(40);
+  const moved = await page.evaluate(() => document.querySelector("#pricing").firstElementChild.textContent);
+  check("drag moves an element into another container", shown === 1 && parentShown === 1 && moved === "Cheap", `${shown} ${parentShown} ${moved}`);
+  const cross = (await cmd("list_changes")).data.at(-1);
+  const crossPrompt = (await cmd("get_prompt")).data.prompt;
+  check("prompt says where it moved from and to", cross.fromParentSelector === "ul.feature-list" && cross.parentSelector === "#pricing" && crossPrompt.includes("out of `ul.feature-list` to be before `#pricing h2`"), crossPrompt.split("\n").find((l) => l.includes("out of")));
+  await page.keyboard.press("ControlOrMeta+z");
+  await page.waitForTimeout(40);
+  check("undo puts it back in its list", (await order()) === "Cheap,Fast,Reliable", await order());
 
   // Vertical move among plans
   await page.click("#pricing .plan:nth-of-type(3)", { force: true });
@@ -226,12 +235,58 @@ try {
   const mv = await cmd("move_element", { elementId: growth.elementId, targetId: starter.elementId, position: "before" });
   check("move via command", mv.ok && (await plans()) === "Growth,Starter,Scale", await plans());
   const nav = (await cmd("find_elements", { text: "Docs" })).data[0];
-  const badMove = await cmd("move_element", { elementId: nav.elementId, targetId: starter.elementId, position: "after" });
-  check("move rejects non-siblings", !badMove.ok, badMove.error);
+  const navLi = (await cmd("find_elements", { selector: ".nav-links li:nth-child(3)" })).data[0];
+  const badMove = await cmd("move_element", { elementId: navLi.elementId, targetId: nav.elementId, position: "after" });
+  check("move rejects moving into itself", !badMove.ok && /inside itself/.test(badMove.error), badMove.error);
   await cmd("undo");
   check("undo works for AI-triggered commands", (await plans()) === "Starter,Scale,Growth");
   const tools = await context.serviceWorkers()[0].evaluate(() => globalThis.agentMarkup.getToolDefinitions());
   check("getToolDefinitions", tools.length === 15 && tools.every((t) => t.name && t.description && t.input_schema?.type === "object"), `${tools.length} tools`);
+
+  // Dragging an only child moves its nearest ancestor with siblings (nav <a> inside <li>)
+  const dragHandleTo = async (x, y) => {
+    const hb = await ui().locator(".bar .handle").boundingBox();
+    await page.mouse.move(hb.x + hb.width / 2, hb.y + hb.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(x, y, { steps: 8 });
+    const shown = await ui().locator(".drop-line.show").count();
+    await page.mouse.up();
+    await page.waitForTimeout(60);
+    return shown;
+  };
+  const navOrder = () => page.$$eval(".nav-links li", (els) => els.map((e) => e.textContent.trim()).join(","));
+  await cmd("select_element", { elementId: null }); // the action bar would sit over the nav otherwise
+  await page.waitForTimeout(40);
+  await page.click(".nav-links a[href='/pricing']", { force: true });
+  await page.waitForTimeout(60);
+  const feat = await page.locator(".nav-links a[href='/features']").boundingBox();
+  const navShown = await dragHandleTo(feat.x + 4, feat.y + feat.height / 2);
+  check("dragging a link moves its list item", navShown === 1 && (await navOrder()) === "Pricing,Features,Docs", `${navShown} ${await navOrder()}`);
+  const navMove = (await cmd("list_changes")).data.at(-1);
+  check("prompt describes the list item move", navMove.type === "move" && navMove.tag === "li", `${navMove.tag} ${navMove.selector}`);
+  await cmd("undo");
+
+  // A button in the hero can go above the headline (the bentonow.com case)
+  await page.click("#trial", { force: true });
+  await page.waitForTimeout(60);
+  const h1b = await page.locator("h1").boundingBox();
+  const aboveShown = await dragHandleTo(h1b.x + 40, h1b.y + 6);
+  const firstInHero = await page.evaluate(() => document.querySelector("h1").parentElement.firstElementChild.id);
+  check("a hero button can move above the headline", aboveShown === 1 && firstInHero === "trial", `${aboveShown} ${firstInHero}`);
+  await cmd("undo");
+
+  // Dropping in the gap between grid items still finds the nearest sibling
+  const cardsNow = await page.$$eval(".feature-card", (els) => els.map((e) => e.textContent).join(","));
+  await page.click(".feature-card:nth-child(3)", { force: true });
+  await page.waitForTimeout(60);
+  const c1 = await page.locator(".feature-card:nth-child(1)").boundingBox();
+  const c2 = await page.locator(".feature-card:nth-child(2)").boundingBox();
+  const gapX = (c1.x + c1.width + c2.x) / 2 + 3; // in the gap, slightly nearer the second card
+  const gapShown = await dragHandleTo(gapX, c2.y + c2.height / 2);
+  const cardsAfter = await page.$$eval(".feature-card", (els) => els.map((e) => e.textContent).join(","));
+  const [a, b, c] = cardsNow.split(",");
+  check("drop in a grid gap lands between the neighbours", gapShown === 1 && cardsAfter === [a, c, b].join(","), `${gapShown} ${cardsNow} -> ${cardsAfter}`);
+  await cmd("undo");
 
   // Keyboard reorder from the drag handle
   await page.click("#pricing .plan:nth-of-type(1)", { force: true });

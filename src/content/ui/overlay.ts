@@ -34,6 +34,102 @@ const visibleRect = (el: Element | null) => {
   return r.width || r.height ? r : null;
 };
 
+const SKIP = /^(script|style|template|link|meta|noscript)$/;
+const isShown = (el: Element) => !SKIP.test(el.localName) && !isHost(el) && el.getClientRects().length > 0;
+
+/** Visible element siblings of `el` (excluding it). */
+function siblingsOf(el: Element): Element[] {
+  const parent = el.parentElement;
+  return parent ? Array.from(parent.children).filter((c) => c !== el && isShown(c)) : [];
+}
+
+/**
+ * The element a drag should move: `el`, or — when `el` is an only child, like
+ * the text inside a nav link — its nearest ancestor (a few levels up) that has
+ * visible siblings. Falls back to `el` itself.
+ */
+export function movableUnit(el: Element): Element | null {
+  if (el === document.body || el === document.documentElement) return null;
+  let n: Element | null = el;
+  for (let depth = 0; n && n !== document.body && depth < 6; depth++) {
+    if (siblingsOf(n).length) return n;
+    n = n.parentElement;
+  }
+  return el;
+}
+
+type Drop = { sibling: Element; position: "before" | "after"; horizontal: boolean; rect: DOMRect };
+
+const nextShown = (n: Element) => { let s = n.nextElementSibling; while (s && !isShown(s)) s = s.nextElementSibling; return s; };
+const prevShown = (n: Element) => { let s = n.previousElementSibling; while (s && !isShown(s)) s = s.previousElementSibling; return s; };
+
+/** Before/after `target`, split along the axis its row flows in. Null if that's where `unit` already is. */
+function sideOf(unit: Element, target: Element, x: number, y: number): Drop | null {
+  const r = target.getBoundingClientRect();
+  const row = [target, ...siblingsOf(target)].map((el) => ({ el, r: el.getBoundingClientRect() }));
+  // Horizontal when the target shares a row with another item (flex rows, grids, inline runs).
+  const horizontal = row.some(({ el, r: o }) => el !== target && Math.min(o.bottom, r.bottom) - Math.max(o.top, r.top) > Math.min(o.height, r.height) / 2);
+  const position: "before" | "after" = horizontal ? (x < r.left + r.width / 2 ? "before" : "after") : y < r.top + r.height / 2 ? "before" : "after";
+  if (position === "before" ? nextShown(unit) === target : prevShown(unit) === target) return null;
+  return { sibling: target, position, horizontal, rect: r };
+}
+
+const nearestTo = (els: Element[], x: number, y: number) => {
+  const dist = (r: DOMRect) => Math.hypot(Math.max(r.left - x, 0, x - r.right), Math.max(r.top - y, 0, y - r.bottom));
+  let best: Element | null = null, bestD = Infinity;
+  for (const el of els) {
+    const d = dist(el.getBoundingClientRect());
+    if (d < bestD) (best = el), (bestD = d);
+  }
+  return best;
+};
+
+const hasOwnText = (el: Element) => Array.from(el.childNodes).some((n) => n.nodeType === Node.TEXT_NODE && n.nodeValue?.trim());
+
+/**
+ * Where a drag would drop.
+ * 1. Near the unit's own siblings: snap to the nearest sibling (reordering).
+ * 2. Anywhere else: before/after the element under the pointer, which moves
+ *    the unit into that element's container.
+ */
+function dropTarget(unit: Element, x: number, y: number): Drop | null {
+  const siblings = siblingsOf(unit);
+  if (siblings.length) {
+    const group = [unit, ...siblings].map((el) => el.getBoundingClientRect());
+    const m = 12;
+    const inGroup =
+      x >= Math.min(...group.map((r) => r.left)) - m && x <= Math.max(...group.map((r) => r.right)) + m &&
+      y >= Math.min(...group.map((r) => r.top)) - m && y <= Math.max(...group.map((r) => r.bottom)) + m;
+    if (inGroup) {
+      const nearest = nearestTo([unit, ...siblings], x, y);
+      return nearest && nearest !== unit ? sideOf(unit, nearest, x, y) : null;
+    }
+  }
+
+  const root = document.body;
+  const hit = document.elementsFromPoint(x, y).find((el) => !isHost(el) && !unit.contains(el) && el !== document.documentElement) ?? root;
+  let target: Element | null = hit;
+  // Over a container's padding or gap (or over the unit's own ancestors): use its nearest child.
+  const kids = (el: Element) => Array.from(el.children).filter((c) => isShown(c) && c !== unit);
+  if (hit === root || hit.contains(unit) || (!hasOwnText(hit) && kids(hit).length > 1 && !kids(hit).some((c) => {
+    const r = c.getBoundingClientRect();
+    return x >= r.left && x <= r.right && y >= r.top && y <= r.bottom;
+  }))) {
+    target = nearestTo(kids(hit), x, y);
+  }
+  if (!target) return null;
+  // Text-level elements (a link inside a paragraph) target their block instead.
+  while (target.parentElement && target.parentElement !== root && getComputedStyle(target).display === "inline") target = target.parentElement;
+  // Same-box wrappers collapse to the outermost one, so the drop reads as "before this block".
+  for (let p = target.parentElement; p && p !== root && !p.contains(unit); p = p.parentElement) {
+    const a = target.getBoundingClientRect(), b = p.getBoundingClientRect();
+    if (Math.abs(a.left - b.left) > 2 || Math.abs(a.top - b.top) > 2 || Math.abs(a.right - b.right) > 2 || Math.abs(a.bottom - b.bottom) > 2) break;
+    target = p;
+  }
+  if (target === unit || unit.contains(target) || target === root || !target.parentElement) return null;
+  return sideOf(unit, target, x, y);
+}
+
 export function createOverlay(): Overlay {
   const hoverBox = h("div", { class: "box hover" });
   const tag = h("div", { class: "tag" });
@@ -45,6 +141,7 @@ export function createOverlay(): Overlay {
   const dragSrcBox = h("div", { class: "box dragging-src" });
   const flashBox = h("div", { class: "box flash" });
   const dropLine = h("div", { class: "drop-line" });
+  const dropParent = h("div", { class: "box drop-parent" });
   const pins = h("div", { class: "pins" });
 
   // ---- Action bar ----
@@ -115,7 +212,7 @@ export function createOverlay(): Overlay {
     }
   });
 
-  const layer = h("div", { class: "layer" }, hoverBox, selectedBox, dragSrcBox, flashBox, dropLine, pins, tag, bar, noteBox, live);
+  const layer = h("div", { class: "layer" }, hoverBox, selectedBox, dragSrcBox, dropParent, flashBox, dropLine, pins, tag, bar, noteBox, live);
 
   // ---- Hover ----
   let hoverEl: Element | null = null;
@@ -135,36 +232,50 @@ export function createOverlay(): Overlay {
   }
 
   // ---- Drag to reorder ----
+  // What moves is the "unit": the selection itself, or — when the selection is
+  // an only child, like an <a> inside an <li> — its nearest ancestor that has
+  // visible siblings. Drop targets are found geometrically (nearest sibling to
+  // the pointer), so gaps between items and overlapping page layers don't matter.
   let drag: { el: Element; id: string; pointerId: number; drop: { targetId: string; position: "before" | "after" } | null } | null = null;
 
+  const unitOf = (el: Element | null) => (el ? movableUnit(el) : null);
+  const updateHandle = () => {
+    const sel = selected();
+    const unit = unitOf(sel);
+    handle.disabled = !unit;
+    handle.setAttribute("aria-disabled", String(!unit));
+    handle.title = !unit
+      ? "This element can't be moved"
+      : unit === sel
+        ? "Drag to move anywhere on the page; arrow keys reorder among siblings"
+        : `Drag to move the surrounding <${unit.localName}> anywhere; arrow keys reorder it among its siblings`;
+  };
+  store.subscribe((s, prev) => {
+    if (s.selectedId !== prev.selectedId || s.changes !== prev.changes) updateHandle();
+  });
+
   handle.addEventListener("pointerdown", (e) => {
-    const el = selected();
-    if (!el || e.button !== 0) return;
+    const unit = unitOf(selected());
+    if (!unit || e.button !== 0) return;
     e.preventDefault();
     handle.setPointerCapture(e.pointerId);
-    drag = { el, id: idOf(el), pointerId: e.pointerId, drop: null };
+    drag = { el: unit, id: idOf(unit), pointerId: e.pointerId, drop: null };
   });
   handle.addEventListener("pointermove", (e) => {
     if (!drag || e.pointerId !== drag.pointerId) return;
     drag.drop = null;
     dropLine.classList.remove("show");
-    const parent = drag.el.parentElement;
-    let hit = document.elementFromPoint(e.clientX, e.clientY);
-    if (!parent || !hit || isHost(hit)) return;
-    while (hit && hit.parentElement !== parent) hit = hit.parentElement;
-    if (!hit || hit === drag.el) return;
-    const r = hit.getBoundingClientRect();
-    const horizontal = Array.from(parent.children).some((s) => {
-      if (s === hit) return false;
-      const o = s.getBoundingClientRect();
-      return o.height > 0 && Math.min(o.bottom, r.bottom) - Math.max(o.top, r.top) > Math.min(o.height, r.height) / 2;
-    });
-    const position: "before" | "after" = horizontal
-      ? e.clientX < r.left + r.width / 2 ? "before" : "after"
-      : e.clientY < r.top + r.height / 2 ? "before" : "after";
-    const noop = position === "before" ? drag.el.nextElementSibling === hit : drag.el.previousElementSibling === hit;
-    if (noop) return;
-    drag.drop = { targetId: idOf(hit), position };
+    dropParent.classList.remove("show");
+    const target = dropTarget(drag.el, e.clientX, e.clientY);
+    if (!target) return;
+    // Moving into another container: outline where it will land.
+    const into = target.sibling.parentElement;
+    if (into && into !== drag.el.parentElement && into !== document.body) {
+      place(dropParent, into.getBoundingClientRect());
+      dropParent.classList.add("show");
+    }
+    const { sibling, position, horizontal, rect: r } = target;
+    drag.drop = { targetId: idOf(sibling), position };
     const edge = position === "before" ? 0 : 1;
     if (horizontal) place(dropLine, { left: r.left + r.width * edge - 1.5, top: r.top, width: 3, height: r.height });
     else place(dropLine, { left: r.left, top: r.top + r.height * edge - 1.5, width: r.width, height: 3 });
@@ -175,20 +286,21 @@ export function createOverlay(): Overlay {
     const { id, drop, pointerId } = drag;
     drag = null;
     dropLine.classList.remove("show");
+    dropParent.classList.remove("show");
     dragSrcBox.classList.remove("show");
     if (handle.hasPointerCapture(pointerId)) handle.releasePointerCapture(pointerId);
     if (commit && drop) void executeCommand("move_element", { elementId: id, targetId: drop.targetId, position: drop.position });
   };
-  // Keyboard reordering: arrows move before the previous / after the next visible sibling.
+  // Keyboard reordering: arrows move the unit before the previous / after the next visible sibling.
   handle.addEventListener("keydown", (e) => {
     const back = e.key === "ArrowUp" || e.key === "ArrowLeft";
     const fwd = e.key === "ArrowDown" || e.key === "ArrowRight";
-    const el = selected();
+    const el = unitOf(selected());
     if ((!back && !fwd) || !el) return;
     e.preventDefault();
     const step = (n: Element | null) => (back ? n?.previousElementSibling : n?.nextElementSibling) ?? null;
     let target = step(el);
-    while (target && !target.getClientRects().length) target = step(target);
+    while (target && !isShown(target)) target = step(target);
     if (!target) {
       live.textContent = back ? "Already first among its siblings." : "Already last among its siblings.";
       return;
@@ -200,6 +312,11 @@ export function createOverlay(): Overlay {
   });
   handle.addEventListener("pointerup", () => endDrag(true));
   handle.addEventListener("pointercancel", () => endDrag(false));
+
+  // Hovering or focusing the handle previews the element that will move.
+  let handleActive = false;
+  for (const [ev, on] of [["pointerenter", true], ["pointerleave", false], ["focus", true], ["blur", false]] as const)
+    handle.addEventListener(ev, () => (handleActive = on));
 
   // ---- Render loop ----
   let lastFlashAt = 0;
@@ -249,6 +366,12 @@ export function createOverlay(): Overlay {
       noteLabel.textContent = hasNote ? "Edit note" : "Note";
     }
 
+    const preview = drag?.el ?? (handleActive ? unitOf(sel) : null);
+    if (preview && preview !== sel) {
+      const pr = visibleRect(preview);
+      dragSrcBox.classList.toggle("show", !!pr);
+      if (pr) place(dragSrcBox, pr);
+    } else if (!drag) dragSrcBox.classList.remove("show");
     if (drag) {
       const dr = visibleRect(drag.el);
       dragSrcBox.classList.toggle("show", !!dr);

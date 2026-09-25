@@ -75,12 +75,12 @@ export const COMMAND_DEFINITIONS = [
   {
     name: "move_element",
     description:
-      "Reorder an element relative to one of its siblings (same parent only). Shown live on the page.",
+      "Move an element to just before or after another element anywhere on the page (a sibling to reorder, or any other element to move it into that element's container). Shown live on the page. The target can't be the element itself or inside it.",
     parameters: {
       type: "object",
       properties: {
         elementId,
-        targetId: { ...elementId, description: "A sibling of elementId (same parent element)." },
+        targetId: { ...elementId, description: "The element to place elementId next to. elementId ends up in targetId's parent." },
         position: { type: "string", enum: ["before", "after"], description: "Place elementId before or after targetId." },
       },
       required: ["elementId", "targetId", "position"],

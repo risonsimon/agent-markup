@@ -96,8 +96,9 @@ const handlers: Record<CommandName, Handler> = {
     const el = requireElement(elementId);
     const target = requireElement(targetId);
     if (el === target) throw new CommandError("An element can't be moved relative to itself");
-    if (!el.parentElement || el.parentElement !== target.parentElement)
-      throw new CommandError("Elements can only be moved among siblings in the same parent");
+    if (el.contains(target)) throw new CommandError("An element can't be moved inside itself");
+    if (!el.parentElement || !target.parentElement || target.parentElement === document.documentElement)
+      throw new CommandError("That target can't hold a moved element");
     const already = position === "before" ? el.nextElementSibling === target : el.previousElementSibling === target;
     if (already) return { changed: false };
 
@@ -106,7 +107,9 @@ const handlers: Record<CommandName, Handler> = {
     if (before) engine.unapply(before);
     const backHome = position === "before" ? el.nextElementSibling === target : el.previousElementSibling === target;
     const fresh = before ? null : base(el, elementId);
-    const parentSelector = stableSelector(el.parentElement);
+    // Selectors are taken with the element in its original place.
+    const fromParentSelector = stableSelector(el.parentElement!);
+    const parentSelector = stableSelector(target.parentElement);
     const targetSelector = stableSelector(target);
     if (before) engine.apply(before);
 
@@ -120,6 +123,7 @@ const handlers: Record<CommandName, Handler> = {
           targetSelector,
           targetSnippet: snippet(target, 60),
           parentSelector,
+          fromParentSelector,
         };
     const patch = session.patchFor(before, after);
     session.commit("Move", [patch]);

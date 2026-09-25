@@ -41,7 +41,7 @@ export function apply(change: Change) {
       break; // Notes are drawn as pins by the overlay; nothing changes on the page.
     case "move": {
       const target = elementOf(change.targetId);
-      if (!target || !el.parentElement || target.parentElement !== el.parentElement) return;
+      if (!target || !el.parentElement || !target.parentElement || el.contains(target)) return;
       originalPlace.set(change, { parent: el.parentElement, next: el.nextSibling });
       target.parentElement.insertBefore(el, change.position === "before" ? target : target.nextSibling);
       break;

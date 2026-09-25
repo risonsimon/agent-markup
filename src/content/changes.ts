@@ -45,7 +45,10 @@ export interface MoveChange extends BaseChange {
   targetId: string | null;
   targetSelector: string;
   targetSnippet: string;
+  /** The container the element ends up in (the target's parent). */
   parentSelector: string;
+  /** The container the element started in; equals parentSelector for a reorder among siblings. */
+  fromParentSelector?: string;
 }
 
 export type Change = EditChange | RemoveChange | NoteChange | MoveChange;

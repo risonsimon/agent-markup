@@ -28,7 +28,7 @@ While it's on:
   - **Edit text** (or double-click the element): edit the text in place, as plain text. **Enter** saves, **Esc** cancels, **Shift+Enter** adds a new line.
   - **Remove**: hides the element on the page. It stays in the DOM, so you can restore it.
   - **Note**: attaches an instruction such as "make this bigger". A numbered pin marks the element. Save with **⌘/Ctrl+Enter**. Click the pin to edit the note.
-  - **Drag handle (⠿)**: drag the element before or after one of its siblings. A line shows where it will drop. Elements can only move within their own parent. With the handle focused, the arrow keys move the element one sibling at a time.
+  - **Drag handle (⠿)**: drag the element anywhere on the page. Near its own siblings it snaps to the nearest one to reorder them, and gaps between items are fine. Anywhere else it drops before or after the element under the pointer, moving it into that element's container, which is outlined while you drag. Pointing at a link inside a paragraph targets the whole paragraph. If you selected something with no siblings, like the text inside a nav link, the handle moves its nearest ancestor that has siblings (the `<li>`). Hovering the handle outlines what will move. With the handle focused, the arrow keys reorder the element one sibling at a time.
 - **Hold Alt to browse.** While you hold Alt, Agent Markup ignores clicks and hovers, so you can click links, open menus and modals, and scroll. Release Alt to go back to editing. (Chrome normally downloads a link when you Alt+click it. Agent Markup turns that into a normal click.)
 - All other clicks on the page are intercepted, so selecting an element never follows a link or submits a form.
 - **Esc** clears the selection.
@@ -103,7 +103,7 @@ Everything goes through `executeCommand`: the UI, keyboard shortcuts and outside
 | `edit_text` | `{ elementId, newText }` | `{ changed, changeId, oldText, newText }` |
 | `remove_element` | `{ elementId }` | `{ changeId }` |
 | `add_note` | `{ elementId, note }` (empty note deletes it) | `{ changed, changeId }` |
-| `move_element` | `{ elementId, targetId, position: "before" \| "after" }` (siblings only) | `{ changed, changeId }` |
+| `move_element` | `{ elementId, targetId, position: "before" \| "after" }` (any target outside the element itself) | `{ changed, changeId }` |
 | `revert_change` | `{ changeId }` | `{ reverted }` |
 | `undo` / `redo` / `clear_all` | `{}` | status |
 | `list_changes` | `{}` | changes in prompt order, each with its `page` and `onThisPage` |

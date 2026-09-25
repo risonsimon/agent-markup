@@ -19,9 +19,14 @@ function describe(c: Change): string[] {
     case "move": {
       const a = c.snippet ? ` (${quote(c.snippet)})` : "";
       const b = c.targetSnippet ? ` (${quote(c.targetSnippet)})` : "";
+      const from = c.fromParentSelector ?? c.parentSelector;
+      const line =
+        from === c.parentSelector
+          ? `Move ${code(c.selector)}${a} to be ${c.position} ${code(c.targetSelector)}${b} within ${code(c.parentSelector)}.`
+          : `Move ${code(c.selector)}${a} out of ${code(from)} to be ${c.position} ${code(c.targetSelector)}${b} in ${code(c.parentSelector)}.`;
       return [
         "MOVE",
-        `Move ${code(c.selector)}${a} to be ${c.position} ${code(c.targetSelector)}${b} within ${code(c.parentSelector)}.`,
+        line,
         `Section: ${c.section}`,
         `Context HTML: ${code(c.contextHtml)}`,
       ];

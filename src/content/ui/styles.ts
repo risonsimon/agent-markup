@@ -90,6 +90,7 @@ kbd {
 .corner.tl { top: -4px; left: -4px; } .corner.tr { top: -4px; right: -4px; }
 .corner.bl { bottom: -4px; left: -4px; } .corner.br { bottom: -4px; right: -4px; }
 .dragging-src { outline: 1.5px dashed var(--color-drag-src); outline-offset: 2px; background: var(--color-drag-src-wash); }
+.drop-parent { outline: 1px dashed var(--color-accent); outline-offset: 2px; background: var(--color-accent-wash); border-radius: 2px; }
 .flash { box-shadow: 0 0 0 2px var(--color-accent); background: var(--color-accent-wash-strong); border-radius: 2px; }
 .flash.show { animation: am-flash 1s var(--ease-out) forwards; }
 @keyframes am-flash { 0%, 45% { opacity: 1; } 100% { opacity: 0; } }
@@ -132,6 +133,7 @@ kbd {
 .bar button:active { scale: .97; background: var(--color-bg-active); }
 .bar .handle { padding: 0 6px; cursor: grab; touch-action: none; }
 .bar .handle:active { cursor: grabbing; }
+.bar .handle:disabled { opacity: .35; cursor: not-allowed; }
 .bar .sep { width: 1px; height: 16px; background: var(--color-line-strong); margin: 0 3px; }
 .bar .hint { display: inline-flex; align-items: center; gap: 5px; padding: 0 8px; color: var(--color-ink-2); font-size: 12px; }
 .bar .hint .dot { width: 3px; height: 3px; border-radius: 50%; background: var(--color-ink-3); margin: 0 4px; }
