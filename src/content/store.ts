@@ -16,7 +16,8 @@ export interface State {
   noteEditingId: string | null;
   /** Bumped to trigger a flash animation on an element. */
   flash: { elementId: string; at: number } | null;
-  panel: { collapsed: boolean; x: number | null; y: number | null };
+  /** x = left offset; y = distance from the `anchor` edge (the panel grows away from it). */
+  panel: { collapsed: boolean; x: number | null; y: number | null; anchor: "top" | "bottom" };
   toast: { text: string; at: number } | null;
 }
 
@@ -33,7 +34,7 @@ class Store {
     editingId: null,
     noteEditingId: null,
     flash: null,
-    panel: { collapsed: false, x: null, y: null },
+    panel: { collapsed: false, x: null, y: null, anchor: "bottom" },
     toast: null,
   };
   private listeners = new Set<Listener>();

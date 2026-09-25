@@ -70,6 +70,16 @@ try {
   await page.keyboard.press("Escape");
   check("Esc cancels edit", (await page.evaluate(() => document.querySelector("h1").innerText)) === "Email for teams\nthat ship");
 
+  // Editing inside a <button>: Space types a space, Shift+Enter adds a line break
+  await page.dblclick("#trial", { force: true });
+  await page.keyboard.type("Start your trial");
+  await page.keyboard.press("Shift+Enter");
+  await page.keyboard.type("today");
+  await page.keyboard.press("Enter");
+  check("button edit keeps spaces and line breaks", (await page.evaluate(() => document.querySelector("#trial").innerText)) === "Start your trial\ntoday", JSON.stringify(await page.evaluate(() => document.querySelector("#trial").innerText)));
+  check("typing in a button doesn't press it", (await page.evaluate(() => window.__clicked ?? 0)) === 0);
+  await cmd("undo");
+
   // Double-click starts editing
   await page.dblclick(".feature-card:nth-child(2)", { force: true });
   await page.keyboard.type("Rock solid");
@@ -293,6 +303,38 @@ try {
   await page.waitForTimeout(100);
   await cmd("undo"); await cmd("redo"); // re-render the list
   check("missing element shows a Not-on-page label", (await ui().locator(".panel .item.missing .flag").textContent()) === "Not on page");
+  await cmd("clear_all");
+
+  // Many changes after dragging the panel: it stays on screen and the list scrolls
+  const many = (await cmd("find_elements", { selector: "li, a, h1, h2, div.plan, button", limit: 20 })).data;
+  const onScreen = () => ui().locator(".panel").evaluate((p) => {
+    const r = p.getBoundingClientRect(), l = p.querySelector(".list"), c = p.querySelector(".copy").getBoundingClientRect();
+    return { ok: r.top >= 0 && r.bottom <= innerHeight && c.bottom <= innerHeight, scrolls: l.scrollHeight > l.clientHeight, top: r.top, bottom: r.bottom, vh: innerHeight };
+  });
+  const dragHeadTo = async (y) => {
+    const hb = await ui().locator(".panel .head").boundingBox();
+    await page.mouse.move(hb.x + 80, hb.y + 20); await page.mouse.down();
+    await page.mouse.move(hb.x + 80, y, { steps: 6 }); await page.mouse.up();
+    await page.waitForTimeout(80);
+  };
+  await dragHeadTo(150); // upper half: anchored to the top
+  for (const e of many) await cmd("add_note", { elementId: e.elementId, note: "A long enough note that each list item wraps onto a second line in the panel" });
+  await page.waitForTimeout(150);
+  let pos = await onScreen();
+  check("top-anchored panel stays on screen with many changes", pos.ok && pos.scrolls, JSON.stringify(pos));
+  const chrome = () => ui().locator(".panel").evaluate((p) => ["head", "tools", "copy", "foot"].map((c) => Math.round(p.querySelector("." + c).getBoundingClientRect().height)).join(","));
+  const chromeBefore = await chrome();
+  for (const e of many.slice(0, 8)) await cmd("edit_text", { elementId: e.elementId, newText: "Edited text to make the list longer" });
+  await page.waitForTimeout(100);
+  check("copy button and toolbar keep their height as the list grows", (await chrome()) === chromeBefore && chromeBefore.split(",")[2] === "36", `${chromeBefore} -> ${await chrome()}`);
+  await dragHeadTo(700); // lower half: anchored to the bottom, grows upward
+  pos = await onScreen();
+  check("bottom-anchored panel stays on screen", pos.ok && pos.scrolls, JSON.stringify(pos));
+  await page.setViewportSize({ width: 1280, height: 520 });
+  await page.waitForTimeout(120);
+  pos = await onScreen();
+  check("panel re-fits after the window shrinks", pos.ok, JSON.stringify(pos));
+  await page.setViewportSize({ width: 1280, height: 800 });
   await cmd("clear_all");
 
   // Narrow viewport: the panel fits

@@ -106,6 +106,15 @@ export function createInterceptor(overlay: Overlay) {
       if (e.key === "Enter" && !e.shiftKey && !e.isComposing) {
         e.preventDefault();
         save();
+      } else if (e.key === "Enter" && e.shiftKey && !e.isComposing) {
+        // Insert the line break ourselves: buttons, links and some inline
+        // elements don't do it natively.
+        e.preventDefault();
+        document.execCommand("insertLineBreak");
+      } else if (e.key === " " && !e.isComposing) {
+        // Space on a <button> (or <summary>) means "press it", not "type a space".
+        e.preventDefault();
+        document.execCommand("insertText", false, " ");
       } else if (e.key === "Escape") {
         e.preventDefault();
         cancel();
@@ -135,6 +144,12 @@ export function createInterceptor(overlay: Overlay) {
 
   function onKeyUp(e: KeyboardEvent) {
     if (e.key === "Alt") setBrowsing(false);
+    const editing = editingElement();
+    if (editing && e.composedPath().includes(editing)) {
+      // A button activates on Space keyup; keep that and page handlers away.
+      if (e.key === " ") e.preventDefault();
+      e.stopImmediatePropagation();
+    }
   }
   const onBlur = () => setBrowsing(false);
   const onLeave = () => overlay.setHover(null);

@@ -122,24 +122,32 @@ export function createPanel() {
       head.removeEventListener("pointermove", move);
       head.removeEventListener("pointerup", up);
       const pr = panel.getBoundingClientRect();
-      if (Math.abs(ev.clientX - dx - r.left) > 2 || Math.abs(ev.clientY - dy - r.top) > 2) setPanel({ x: pr.left, y: pr.top });
+      if (Math.abs(ev.clientX - dx - r.left) > 2 || Math.abs(ev.clientY - dy - r.top) > 2) {
+        // Anchor to the nearer vertical edge so the panel grows into open space.
+        const lower = pr.top + pr.height / 2 > innerHeight / 2;
+        setPanel({ x: pr.left, y: lower ? innerHeight - pr.bottom : pr.top, anchor: lower ? "bottom" : "top" });
+      }
     };
     head.addEventListener("pointermove", move);
     head.addEventListener("pointerup", up);
   });
 
-  function applyPos(x: number | null, y: number | null) {
+  function applyPos(x: number | null, y: number | null, anchor: "top" | "bottom" = "top") {
+    const s = panel.style;
     if (x === null || y === null) {
-      panel.style.left = panel.style.top = "";
-      panel.style.right = panel.style.bottom = "";
+      s.left = s.top = s.right = s.bottom = s.maxHeight = "";
       return;
     }
-    // Keep the panel on screen after viewport resizes.
+    // Keep the panel on screen after viewport resizes, and cap its height to the
+    // space left between the anchored edge and the far edge so the list scrolls
+    // instead of pushing the Copy button off screen.
     const cx = Math.min(Math.max(x, 4), Math.max(4, innerWidth - panel.offsetWidth - 4));
-    const cy = Math.min(Math.max(y, 4), Math.max(4, innerHeight - 40));
-    panel.style.left = `${cx}px`;
-    panel.style.top = `${cy}px`;
-    panel.style.right = panel.style.bottom = "auto";
+    const cy = Math.min(Math.max(y, 4), Math.max(4, innerHeight - 120));
+    s.left = `${cx}px`;
+    s.right = "auto";
+    s[anchor] = `${cy}px`;
+    s[anchor === "top" ? "bottom" : "top"] = "auto";
+    s.maxHeight = `min(560px, calc(100vh - ${cy + 12}px))`;
   }
 
   function setPanel(patch: Partial<State["panel"]>) {
@@ -174,7 +182,7 @@ export function createPanel() {
     count.textContent = String(n);
     panel.classList.toggle("collapsed", s.panel.collapsed);
     collapseBtn.title = s.panel.collapsed ? "Expand" : "Collapse";
-    applyPos(s.panel.x, s.panel.y);
+    applyPos(s.panel.x, s.panel.y, s.panel.anchor);
     setDisabled(undoBtn, !s.canUndo);
     setDisabled(redoBtn, !s.canRedo);
     setDisabled(clearBtn, n === 0);
@@ -259,9 +267,15 @@ export function createPanel() {
     list.replaceChildren(...strip, ...rows);
   }
 
+  addEventListener("resize", () => {
+    const { x, y, anchor } = store.get().panel;
+    applyPos(x, y, anchor);
+  });
+
   async function loadPosition() {
     const saved = (await chrome.storage.local.get(PANEL_KEY).catch(() => ({} as Record<string, unknown>)))[PANEL_KEY] as State["panel"] | undefined;
-    if (saved) store.set({ panel: { collapsed: !!saved.collapsed, x: saved.x ?? null, y: saved.y ?? null } });
+    if (saved)
+      store.set({ panel: { collapsed: !!saved.collapsed, x: saved.x ?? null, y: saved.y ?? null, anchor: saved.anchor ?? "top" } });
   }
 
   return { el: panel, render, loadPosition };

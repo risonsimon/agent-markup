@@ -209,7 +209,9 @@ kbd {
 .panel .collapse svg { transition: rotate var(--dur-short) var(--ease-out); }
 .panel.collapsed .collapse svg { rotate: 180deg; }
 
-.panel .list { list-style: none; margin: 0; padding: 6px; overflow-y: auto; flex: 1; min-height: 0; overscroll-behavior: contain; }
+.panel .list { list-style: none; margin: 0; padding: 6px; overflow-y: auto; flex: 1 1 auto; min-height: 0; overscroll-behavior: contain; }
+/* Only the list gives up height when the panel is capped; the chrome around it never shrinks. */
+.panel .head, .panel .tools, .panel .copy, .panel .copy-help, .panel .foot { flex: none; }
 .panel .list::-webkit-scrollbar { width: 10px; }
 .panel .list::-webkit-scrollbar-thumb { background: var(--color-line-strong); border-radius: 5px; border: 3px solid var(--color-bg); }
 .panel .empty { padding: 12px 10px; color: var(--color-ink-2); line-height: 1.55; text-wrap: pretty; }
