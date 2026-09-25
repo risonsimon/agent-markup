@@ -167,3 +167,7 @@ Both use Playwright with a test build (`dist-test/`). The test build adds `<all_
 - After a reload, changes are matched to elements by selector. Pages that render very differently each load, or sites that change their markup, may leave some changes marked as not found. They still appear in the prompt.
 - A session covers one site (origin). Changes on a different domain start their own session.
 - Undo and redo history covers what you did since the page last loaded. After a full navigation, earlier changes stay in the list and can still be reverted with ×.
+
+## License
+
+[MIT](LICENSE)
