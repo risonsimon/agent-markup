@@ -1,7 +1,7 @@
 // Page overlay: hover outline + label, selection outline, floating action bar,
 // drag-to-reorder among siblings, note pins and the note editor.
 import { executeCommand } from "../commands";
-import { stableSelector, truncate } from "../describe";
+import { snippet, stableSelector, truncate } from "../describe";
 import { elementOf, idOf } from "../registry";
 import { store } from "../store";
 import { editingElement, startEditing } from "./inlineEdit";
@@ -48,7 +48,13 @@ export function createOverlay(): Overlay {
   const pins = h("div", { class: "pins" });
 
   // ---- Action bar ----
-  const handle = h("button", { class: "handle", title: "Drag to reorder among siblings", "aria-label": "Drag to reorder", html: ICONS.drag });
+  const handle = h("button", {
+    class: "handle",
+    title: "Drag to reorder among siblings, or use the arrow keys",
+    "aria-label": "Reorder: drag, or press the arrow keys to move before or after a sibling",
+    html: ICONS.drag,
+  });
+  const live = h("div", { class: "sr", "aria-live": "polite" });
   const noteLabel = h("span", {}, "Note");
   const actions = h(
     "div",
@@ -77,9 +83,9 @@ export function createOverlay(): Overlay {
   };
 
   // ---- Note editor ----
-  const noteText = h("textarea", { placeholder: 'e.g. "Make this bigger" or "Use our brand color"', "aria-label": "Note" });
+  const noteText = h("textarea", { placeholder: "“Make this bigger”", "aria-label": "Note for your coding agent" });
   const noteTarget = h("span");
-  const noteDelete = h("button", { class: "btn danger", onclick: () => saveNote("") }, "Delete");
+  const noteDelete = h("button", { class: "btn danger", onclick: () => saveNote("") }, "Delete note");
   const noteBox = h(
     "div",
     { class: "note-editor", role: "dialog", "aria-label": "Note" },
@@ -109,7 +115,7 @@ export function createOverlay(): Overlay {
     }
   });
 
-  const layer = h("div", { class: "layer" }, hoverBox, selectedBox, dragSrcBox, flashBox, dropLine, pins, tag, bar, noteBox);
+  const layer = h("div", { class: "layer" }, hoverBox, selectedBox, dragSrcBox, flashBox, dropLine, pins, tag, bar, noteBox, live);
 
   // ---- Hover ----
   let hoverEl: Element | null = null;
@@ -173,6 +179,25 @@ export function createOverlay(): Overlay {
     if (handle.hasPointerCapture(pointerId)) handle.releasePointerCapture(pointerId);
     if (commit && drop) void executeCommand("move_element", { elementId: id, targetId: drop.targetId, position: drop.position });
   };
+  // Keyboard reordering: arrows move before the previous / after the next visible sibling.
+  handle.addEventListener("keydown", (e) => {
+    const back = e.key === "ArrowUp" || e.key === "ArrowLeft";
+    const fwd = e.key === "ArrowDown" || e.key === "ArrowRight";
+    const el = selected();
+    if ((!back && !fwd) || !el) return;
+    e.preventDefault();
+    const step = (n: Element | null) => (back ? n?.previousElementSibling : n?.nextElementSibling) ?? null;
+    let target = step(el);
+    while (target && !target.getClientRects().length) target = step(target);
+    if (!target) {
+      live.textContent = back ? "Already first among its siblings." : "Already last among its siblings.";
+      return;
+    }
+    const position = back ? "before" : "after";
+    void executeCommand("move_element", { elementId: idOf(el), targetId: idOf(target), position }).then((r) => {
+      live.textContent = r.ok ? `Moved ${position} “${snippet(target, 40) || target.localName}”.` : (r.error ?? "Couldn’t move.");
+    });
+  });
   handle.addEventListener("pointerup", () => endDrag(true));
   handle.addEventListener("pointercancel", () => endDrag(false));
 

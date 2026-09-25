@@ -28,7 +28,7 @@ While it's on:
   - **Edit text** (or double-click the element): edit the text in place, as plain text. **Enter** saves, **Esc** cancels, **Shift+Enter** adds a new line.
   - **Remove**: hides the element on the page. It stays in the DOM, so you can restore it.
   - **Note**: attaches an instruction such as "make this bigger". A numbered pin marks the element. Save with **⌘/Ctrl+Enter**. Click the pin to edit the note.
-  - **Drag handle (⠿)**: drag the element before or after one of its siblings. A line shows where it will drop. Elements can only move within their own parent.
+  - **Drag handle (⠿)**: drag the element before or after one of its siblings. A line shows where it will drop. Elements can only move within their own parent. With the handle focused, the arrow keys move the element one sibling at a time.
 - **Hold Alt to browse.** While you hold Alt, Agent Markup ignores clicks and hovers, so you can click links, open menus and modals, and scroll. Release Alt to go back to editing. (Chrome normally downloads a link when you Alt+click it. Agent Markup turns that into a normal click.)
 - All other clicks on the page are intercepted, so selecting an element never follows a link or submits a form.
 - **Esc** clears the selection.
@@ -39,7 +39,7 @@ The panel sits at the bottom right. You can drag it by its header and collapse i
 
 - A numbered list of your changes: ~~old~~ → new for text edits, plus labelled removes, notes and moves. Click an item to scroll to its element and flash it. Click **×** to revert that change.
 - **Undo** and **Redo**, also **⌘/Ctrl+Z** and **⌘/Ctrl+Shift+Z** when you're not typing in a field.
-- **Clear all**. Click it twice to confirm. Clearing can be undone.
+- **Clear all** clears everything in one click. An inline **Undo** appears for 8 seconds, and ⌘/Ctrl+Z works too.
 - **Copy prompt (N)** copies the prompt to your clipboard.
 
 **Multiple pages.** Browse to other pages on the same site (hold Alt and click a link) and keep marking up. Changes from every page go into one session, grouped under a header for each page. That works for normal page loads and for client-side route changes in single-page apps. Only the current page's changes are applied live. Click a change from another page to go to that page.

@@ -21,6 +21,11 @@ function detail(c: Change): (Node | string)[] {
   }
 }
 
+function setDisabled(btn: HTMLButtonElement, disabled: boolean) {
+  btn.disabled = disabled;
+  btn.setAttribute("aria-disabled", String(disabled));
+}
+
 function pagePath(url: string): string {
   try {
     const u = new URL(url);
@@ -53,12 +58,14 @@ export function createPanel() {
   const redoBtn = h("button", { class: "btn quiet", title: "Redo (⌘/Ctrl+Shift+Z)", html: ICONS.redo + "<span>Redo</span>" });
   const clearBtn = h("button", { class: "btn danger" }, "Clear all");
   const copyBtn = h("button", { class: "btn primary copy" });
+  const copyHelp = h("div", { class: "copy-help", role: "status" });
   const body = h(
     "div",
     { class: "body" },
     list,
     h("div", { class: "tools" }, undoBtn, redoBtn, h("span", { class: "grow" }), clearBtn),
     copyBtn,
+    copyHelp,
     h("div", { class: "foot", html: "Hold <kbd>Alt</kbd> to use the page normally" }),
   );
   const panel = h("div", { class: "panel", role: "region", "aria-label": "Agent Markup changes" }, head, body);
@@ -68,38 +75,35 @@ export function createPanel() {
   closeBtn.addEventListener("click", () => void executeCommand("set_enabled", { enabled: false }));
   collapseBtn.addEventListener("click", () => setPanel({ collapsed: !store.get().panel.collapsed }));
 
-  let confirmTimer = 0;
-  clearBtn.addEventListener("click", () => {
-    if (clearBtn.classList.contains("confirm")) {
-      clearTimeout(confirmTimer);
-      resetClear();
-      void executeCommand("clear_all");
-      return;
-    }
-    clearBtn.classList.add("confirm");
-    clearBtn.textContent = "Click to confirm";
-    confirmTimer = window.setTimeout(resetClear, 3000);
-  });
-  const resetClear = () => {
-    clearBtn.classList.remove("confirm");
-    clearBtn.textContent = "Clear all";
+  // Clear all runs immediately; an inline Undo strip covers mistakes.
+  let undoOffer: { count: number; after: Change[]; timer: number } | null = null;
+  const dismissUndo = () => {
+    if (!undoOffer) return;
+    clearTimeout(undoOffer.timer);
+    undoOffer = null;
   };
+  clearBtn.addEventListener("click", async () => {
+    const res = await executeCommand("clear_all");
+    const count = (res.data as { cleared?: number } | undefined)?.cleared ?? 0;
+    if (!res.ok || !count) return;
+    dismissUndo();
+    undoOffer = { count, after: store.get().changes, timer: window.setTimeout(() => (dismissUndo(), rerender()), 8000) };
+    rerender();
+  });
 
-  let copyLabelTimer = 0;
-  let copyLabel: string | null = null;
+  let copyTimer = 0;
+  let copyState: { label: string; kind: "done" | "error"; help?: string } | null = null;
   copyBtn.addEventListener("click", async () => {
     const res = await executeCommand("copy_prompt");
-    if (!res.ok) flashCopy(res.error ?? "Copy failed", false);
+    if (!res.ok) flashCopy({ label: "Copy failed", kind: "error", help: `${res.error ?? "The clipboard isn’t available"}. Try again, or click the page first.` });
   });
-  const flashCopy = (text: string, ok: boolean) => {
-    copyLabel = text;
-    copyBtn.classList.toggle("done", ok);
-    clearTimeout(copyLabelTimer);
-    copyLabelTimer = window.setTimeout(() => {
-      copyLabel = null;
-      copyBtn.classList.remove("done");
+  const flashCopy = (state: NonNullable<typeof copyState>) => {
+    copyState = state;
+    clearTimeout(copyTimer);
+    copyTimer = window.setTimeout(() => {
+      copyState = null;
       render(store.get());
-    }, 1600);
+    }, state.kind === "error" ? 6000 : 2500);
     render(store.get());
   };
 
@@ -147,10 +151,23 @@ export function createPanel() {
   let lastToast = 0;
   let lastChanges: Change[] | null = null;
   let lastPageKey = "";
+  let lastOfferKey = 0;
+  const rerender = () => {
+    lastChanges = null;
+    render(store.get());
+  };
+  const undoStrip = (count: number) => {
+    const undo = h("button", { class: "btn" }, "Undo");
+    undo.addEventListener("click", () => {
+      dismissUndo();
+      void executeCommand("undo");
+    });
+    return h("li", { class: "undo-strip", role: "status" }, h("span", {}, `Cleared ${count} ${count === 1 ? "change" : "changes"}`), undo);
+  };
   function render(s: State) {
     if (s.toast && s.toast.at !== lastToast) {
       lastToast = s.toast.at;
-      flashCopy(s.toast.text, true);
+      flashCopy({ label: s.toast.text, kind: "done" });
       return;
     }
     const n = s.changes.length;
@@ -158,23 +175,35 @@ export function createPanel() {
     panel.classList.toggle("collapsed", s.panel.collapsed);
     collapseBtn.title = s.panel.collapsed ? "Expand" : "Collapse";
     applyPos(s.panel.x, s.panel.y);
-    undoBtn.disabled = !s.canUndo;
-    redoBtn.disabled = !s.canRedo;
-    clearBtn.disabled = n === 0;
+    setDisabled(undoBtn, !s.canUndo);
+    setDisabled(redoBtn, !s.canRedo);
+    setDisabled(clearBtn, n === 0);
+    copyBtn.classList.toggle("done", copyState?.kind === "done");
+    copyBtn.classList.toggle("error", copyState?.kind === "error");
     copyBtn.replaceChildren(
-      h("span", { class: "copy-icon", html: copyLabel && copyBtn.classList.contains("done") ? ICONS.check : ICONS.copy }),
-      h("span", {}, copyLabel ?? "Copy prompt"),
-      copyLabel ? "" : h("span", { class: "copy-count" }, String(n)),
+      h("span", { class: "copy-icon", html: copyState ? (copyState.kind === "done" ? ICONS.check : ICONS.warn) : ICONS.copy }),
+      h("span", {}, copyState?.label ?? "Copy prompt"),
+      copyState ? "" : h("span", { class: "copy-count" }, String(n)),
     );
+    copyHelp.textContent = copyState?.help ?? "";
+    copyHelp.classList.toggle("show", !!copyState?.help);
+    if (undoOffer && s.changes !== undoOffer.after) dismissUndo();
 
-    if (s.changes === lastChanges && s.pageKey === lastPageKey) return;
+    const offerKey = undoOffer ? undoOffer.timer : 0;
+    if (s.changes === lastChanges && s.pageKey === lastPageKey && offerKey === lastOfferKey) return;
     lastChanges = s.changes;
     lastPageKey = s.pageKey;
+    lastOfferKey = offerKey;
+    const strip = undoOffer ? [undoStrip(undoOffer.count)] : [];
     if (!n) {
       list.replaceChildren(
+        ...strip,
         h(
           "li",
-          { class: "empty", html: "<b>Click any element</b> to edit its text, remove it, add a note or drag it to reorder.<br>Your changes turn into one precise prompt for your coding agent." },
+          { class: "empty" },
+          h("div", { class: "e-title" }, "No changes yet."),
+          h("div", {}, "Click an element on the page to edit its text, remove it, add a note or move it."),
+          h("div", { class: "e-hint", html: "Double-click to edit text right away." }),
         ),
       );
       return;
@@ -215,6 +244,7 @@ export function createPanel() {
             h("span", { class: "k-icon", html: KIND_ICON[c.type] }),
             KIND_LABEL[c.type],
             h("span", { class: "where" }, `<${c.tag}>`),
+            here && !found ? h("span", { class: "flag" }, "Not on page") : "",
           ),
           h("div", { class: "detail" }, ...detail(c)),
         ),
@@ -226,7 +256,7 @@ export function createPanel() {
       });
       rows.push(item);
     });
-    list.replaceChildren(...rows);
+    list.replaceChildren(...strip, ...rows);
   }
 
   async function loadPosition() {

@@ -163,7 +163,7 @@ const handlers: Record<CommandName, Handler> = {
   async copy_prompt() {
     const prompt = buildPrompt(session.changes());
     await copyText(prompt);
-    store.set({ toast: { text: "Copied!", at: Date.now() } });
+    store.set({ toast: { text: "Copied", at: Date.now() } });
     return { prompt, count: session.changes().length };
   },
 

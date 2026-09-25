@@ -172,7 +172,7 @@ try {
   await root.locator(".panel .copy").click();
   await page.waitForTimeout(100);
   const copied = await page.evaluate(() => navigator.clipboard.readText());
-  check("Copied! confirmation", (await root.locator(".panel .copy").textContent()).includes("Copied"));
+  check("Copied confirmation", (await root.locator(".panel .copy").textContent()) === "Copied");
   check("prompt copied to clipboard", copied.startsWith("I reviewed the live page"));
   console.log("\n----- prompt -----\n" + copied + "\n------------------\n");
   check("prompt has stable selectors", copied.includes("`[data-testid=\"cta-demo\"]`") || copied.includes('a[data-testid="cta-demo"]'));
@@ -223,13 +223,28 @@ try {
   const tools = await context.serviceWorkers()[0].evaluate(() => globalThis.agentMarkup.getToolDefinitions());
   check("getToolDefinitions", tools.length === 15 && tools.every((t) => t.name && t.description && t.input_schema?.type === "object"), `${tools.length} tools`);
 
-  // Clear all with confirmation
+  // Keyboard reorder from the drag handle
+  await page.click("#pricing .plan:nth-of-type(1)", { force: true });
+  await page.waitForTimeout(60);
+  await ui().locator(".bar .handle").focus();
+  await page.keyboard.press("ArrowDown");
+  await page.waitForTimeout(60);
+  check("arrow keys reorder via the handle", (await plans()) === "Scale,Starter,Growth", await plans());
+  check("keyboard move is announced", /^Moved after/.test(await ui().locator(".sr").textContent()), await ui().locator(".sr").textContent());
+  await page.keyboard.press("ArrowUp");
+  await page.waitForTimeout(60);
+  check("arrow up moves it back", (await plans()) === "Starter,Scale,Growth", await plans());
+  await page.keyboard.press("Escape");
+
+  // Clear all: one click, inline Undo
+  const before = (await cmd("list_changes")).data.length;
   await ui().locator(".panel .btn.danger").click();
-  check("clear needs confirmation", (await cmd("list_changes")).data.length === 6);
-  await ui().locator(".panel .btn.danger").click();
-  check("clear all reverts everything", (await cmd("list_changes")).data.length === 0 && (await plans()) === "Starter,Growth,Scale" && (await page.isVisible(".hero-subtitle")));
-  await cmd("undo");
-  check("clear all is undoable", (await cmd("list_changes")).data.length === 6);
+  await page.waitForTimeout(60);
+  check("clear all is one click", (await cmd("list_changes")).data.length === 0 && (await page.isVisible(".hero-subtitle")));
+  check("inline undo strip shown", (await ui().locator(".undo-strip").textContent()).startsWith(`Cleared ${before} changes`));
+  await ui().locator(".undo-strip .btn").click();
+  await page.waitForTimeout(60);
+  check("inline undo restores everything", (await cmd("list_changes")).data.length === before && (await ui().locator(".undo-strip").count()) === 0);
   await cmd("clear_all");
 
   // Multi-page session: changes from every page of the site go into one prompt.
@@ -242,6 +257,7 @@ try {
   list = (await cmd("list_changes")).data;
   check("full navigation keeps earlier pages' changes", list.length === 1 && list[0].onThisPage === false && list[0].page.url.endsWith("/landing"), JSON.stringify(list.map((c) => c.page?.url)));
   check("other-page change isn't applied here", (await page.textContent("h1")) === "Email marketing platform for startups");
+  check("other-page change has no Not-on-page flag", (await ui().locator(".panel .flag").count()) === 0);
   const pricingH2 = (await cmd("find_elements", { text: "Pricing", selector: "h2" })).data[0];
   await cmd("edit_text", { elementId: pricingH2.elementId, newText: "Plans" });
   // Client-side navigation (SPA)
@@ -269,6 +285,22 @@ try {
   await page.waitForTimeout(900);
   check("clicking another page's change goes there and re-applies it", (await page.textContent("h1")) === "Landing headline");
   await cmd("clear_all");
+
+  // A change whose element disappears is labelled, not just greyed out
+  const footP = (await cmd("find_elements", { selector: "footer p" })).data[0].elementId;
+  await cmd("add_note", { elementId: footP, note: "Update the year" });
+  await page.evaluate(() => document.querySelector("footer p").remove());
+  await page.waitForTimeout(100);
+  await cmd("undo"); await cmd("redo"); // re-render the list
+  check("missing element shows a Not-on-page label", (await ui().locator(".panel .item.missing .flag").textContent()) === "Not on page");
+  await cmd("clear_all");
+
+  // Narrow viewport: the panel fits
+  await page.setViewportSize({ width: 320, height: 640 });
+  await page.waitForTimeout(100);
+  const pw = await ui().locator(".panel").boundingBox();
+  check("panel fits a 320px viewport", pw.x >= 0 && pw.x + pw.width <= 320, JSON.stringify(pw));
+  await page.setViewportSize({ width: 1280, height: 800 });
 
   // Toggle off
   await toggle();

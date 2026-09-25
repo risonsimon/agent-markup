@@ -65,7 +65,8 @@ export function h<K extends keyof HTMLElementTagNameMap>(
 }
 
 export const ICONS = {
-  mark: '<svg viewBox="0 0 16 16" width="16" height="16"><rect width="16" height="16" rx="4.5" fill="#1d1d20"/><path d="M5 3.8v8l2.1-2 1.5 3 1.2-.6-1.5-2.9h2.9z" fill="#f2f2f2"/><circle cx="11.6" cy="4.6" r="1.5" fill="var(--accent)"/></svg>',
+  mark: '<svg viewBox="0 0 16 16" width="16" height="16"><rect width="16" height="16" rx="4.5" fill="var(--color-bg-raised)"/><path d="M5 3.8v8l2.1-2 1.5 3 1.2-.6-1.5-2.9h2.9z" fill="var(--color-ink)"/><circle cx="11.6" cy="4.6" r="1.5" fill="var(--color-accent)"/></svg>',
+  warn: '<svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M8 2.5 14 13H2z"/><path d="M8 6.5v3M8 11.5v.01"/></svg>',
   check: '<svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="m3.5 8.5 3 3 6-7"/></svg>',
   move: '<svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M5 2.5v11M2.5 11 5 13.5 7.5 11M11 13.5v-11M8.5 5 11 2.5 13.5 5"/></svg>',
   drag: '<svg viewBox="0 0 16 16" width="14" height="14" fill="currentColor"><circle cx="5.5" cy="3.5" r="1.3"/><circle cx="10.5" cy="3.5" r="1.3"/><circle cx="5.5" cy="8" r="1.3"/><circle cx="10.5" cy="8" r="1.3"/><circle cx="5.5" cy="12.5" r="1.3"/><circle cx="10.5" cy="12.5" r="1.3"/></svg>',
