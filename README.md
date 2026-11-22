@@ -4,6 +4,8 @@ A Chrome extension (Manifest V3) for marking up a live website: edit text, remov
 
 It has no backend, no accounts and makes no AI calls. Nothing leaves your browser except what you paste.
 
+> Made by [Rison Simon](https://risonsimon.com). Need a custom AI workflow or small app like this for your company, or want your team trained to ship with coding agents in-house? [Work with me →](https://risonsimon.com/work-with-me)
+
 ## Install
 
 ```sh
@@ -171,7 +173,3 @@ Both use Playwright with a test build (`dist-test/`). The test build adds `<all_
 ## License
 
 [MIT](LICENSE)
-
----
-
-Made by [Rison Simon](https://risonsimon.com). Need a custom AI workflow or small app like this for your company, or want your team trained to ship with coding agents in-house? [Work with me →](https://risonsimon.com/work-with-me)
